@@ -1,112 +1,147 @@
+import asyncio
 from datetime import datetime
 
+import aiohttp
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 
-noticias = [
+from date_strategy import data_format
+
+urls_rss = ["https://g1.globo.com/rss/g1/educacao/"]
+
+urls_sitemap = [
     "https://noticias.uol.com.br/sitemap/v2/today.xml",
-    "https://g1.globo.com/rss/g1/educacao/",
     "https://www.r7.com/arc/outboundfeeds/sitemap-news/?outputType=xml",
 ]
 
 
-def clean_text(df):
-    df["titulos"] = df["titulos"].apply(
-        lambda x: unicodedata.normalize("NFKD", x)
-        .encode("ascii", "ignore")
-        .decode("utf-8")
-    )
-    return df
+# adicionar funcoes assync dentro de funcoes assync e rodar elas
+async def check_dates(item, link, dic_info):
+    date_rules = {
+        "globo": lambda item: item.find("pubDate"),
+        "r7": lambda item: item.find("news:publication_date"),
+        "uol": lambda item: item.find("lastmod"),
+    }
+
+    for site, rule in date_rules.items():
+        if site in link:
+            data = rule(item)
+            if data:
+                raw_date = data.get_text(strip=True)
+                parsed_date = data_format(raw_date)
+                dic_info["datas"].append(parsed_date)
+                return
+
+    dic_info["datas"].append(None)
 
 
-def check_dates(item, link, dic_info):
-    if "globo" in link:
-        data = item.find("pubDate")
-        if data:
-            pub_date_iso = datetime.strptime(
-                data.get_text(strip=True), "%a, %d %b %Y %H:%M:%S %z"
-            ).isoformat()
-        else:
-            pub_date_iso = None
-        dic_info["datas"].append(pub_date_iso)
-
-    elif "r7" in link:
-        data = item.find("news:publication_date")
-        if data:
-            data = data.get_text(strip=True).replace("Z", "+00:00")
-            pub_date_iso = datetime.fromisoformat(data).isoformat()
-        else:
-            pub_date_iso = None
-        dic_info["datas"].append(pub_date_iso)
-
-    elif "uol" in link:
-        data = item.find("lastmod")
-        if data:
-            data = data.get_text(strip=True).replace("Z", "+00:00")
-            pub_date_iso = datetime.fromisoformat(data).isoformat()
-        else:
-            pub_date_iso = None
-        dic_info["datas"].append(pub_date_iso)
-
-
-def get_news(urls: list) -> dict:
+async def get_news_sitemap(urls: list) -> dict:
     start = 0
-    dic_info = {"titulos": [], "description": [], "datas": [], "portal": []}
+    dic_info_sitemap = {"titulos": [], "description": [], "datas": [], "portal": []}
+    async with aiohttp.ClientSession() as session:
+        for url in urls:
+            if "sitemap" in url:
+                async with session.get(url) as response:
+                    text = await response.text()
+                    soup = BeautifulSoup(text, "html.parser")
+                    for item in soup.find_all("url"):
+                        link = item.find("loc").get_text(strip=True)
+                        dic_info_sitemap["portal"].append(link)
 
-    for url in urls:
-        if "sitemap" in url:
-            response = requests.get(url)
-            soup = BeautifulSoup(response.text, "html.parser")
-            for item in soup.find_all("url"):
-                link = item.find("loc").get_text(strip=True)
-                dic_info["portal"].append(link)
-                check_dates(item, link, dic_info)
-
-        elif "rss" in url:
-            response = requests.get(url)
-            soup = BeautifulSoup(response.text, "xml")
-            for item in soup.find_all("item"):
-                link = item.find("link").get_text(strip=True)
-                dic_info["portal"].append(link)
-                check_dates(item, link, dic_info)
-        start += 1
-        print(start)
-
-    return dic_info
+                        await check_dates(item, link, dic_info_sitemap)
+                        start += 1
+                        print(start)
+    return dic_info_sitemap
 
 
-def get_report_data(urls: list) -> pd.DataFrame:
-    dic_info = get_news(urls)
-    for url in dic_info["portal"]:
-        response = requests.get(url)
-        soup = BeautifulSoup(response.text, "html.parser")
+async def get_news_rss(urls: list) -> dict:
+    dic_info_rss = {"titulos": [], "description": [], "datas": [], "portal": []}
+    start = 1
 
-        # Title
-        title = soup.find("title").get_text(strip=True) if soup.find("title") else ""
-        dic_info["titulos"].append(title)
+    async with aiohttp.ClientSession() as session:
+        for url in urls:
+            if "rss" in url:
+                async with session.get(url) as response:
+                    text = await response.text()
+                    soup = BeautifulSoup(text, "xml")  ##trocar isso por parser
 
-        # Description
+                    for item in soup.find_all("item"):
+                        link = item.find("link").get_text(strip=True)
+                        dic_info_rss["portal"].append(link)
 
-        descriptions = (
-            soup.find("meta", {"name": "description"}).get("content", "")
-            if soup.find("meta", {"name": "description"})
-            else ""
-        )
-        if not descriptions:
-            descriptions = (
-                soup.find("meta", {"itemprop": "alternateName"}).get("content", "")
-                if soup.find("meta", {"itemprop": "alternateName"})
-                else None
-            )
+                        await check_dates(item, link, dic_info_rss)
 
-        dic_info["description"].append(descriptions)
+                        start += 1
+                        print(f"Processados: {start}")
+
+    return dic_info_rss
+
+
+async def get_report_data(urls_rss: list, urls_sitemap: list) -> pd.DataFrame:
+    dict1, dict2 = await asyncio.gather(
+        get_news_rss(urls_rss), get_news_sitemap(urls_sitemap)
+    )
+    dic_info = {**dict1, **dict2}
+
+    teste = 1
+    async with aiohttp.ClientSession() as session:
+        for url in dic_info["portal"]:
+            try:
+                # Fazer a requisição assíncrona
+                async with session.get(url) as response:
+                    text = await response.text()
+                    soup = BeautifulSoup(text, "html.parser")
+
+                    # Título
+                    title = (
+                        soup.find("title")
+                        .get_text(strip=True)
+                        .encode("utf-8")
+                        .decode("utf-8")
+                        if soup.find("title")
+                        else ""
+                    )
+                    dic_info["titulos"].append(title)
+
+                    # Descrição
+                    descriptions = (
+                        soup.find("meta", {"name": "description"})
+                        .get("content", "")
+                        .encode("utf-8")
+                        .decode("utf-8")
+                        if soup.find("meta", {"name": "description"})
+                        else ""
+                    )
+
+                    if not descriptions:
+                        descriptions = (
+                            soup.find("meta", {"itemprop": "alternateName"}).get(
+                                "content", ""
+                            )
+                            if soup.find("meta", {"itemprop": "alternateName"})
+                            else None
+                        )
+
+                    dic_info["description"].append(descriptions)
+
+                teste += 1
+                print(f"teste_{teste}")
+
+            except Exception as e:
+                print(f"Erro ao processar URL {url}: {e}")
+                dic_info["titulos"].append(None)
+                dic_info["description"].append(None)
 
     # Convert to DataFrame
     df = pd.DataFrame(dic_info)
+    df.to_csv("result.csv")
     return df
 
 
-df = get_report_data(noticias)
-df = clean_text(df)
-df.to_csv("result.csv")
+async def main():
+    await get_report_data(urls_rss, urls_sitemap)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
