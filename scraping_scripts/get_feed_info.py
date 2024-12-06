@@ -36,8 +36,8 @@ async def get_news_sitemap(articles_feeds):
                             Article(
                                 portal=article_feed.portal,
                                 url=link,
-                                title="",  # Titles are not in sitemaps
-                                datetime=date,  # Date from lastmod
+                                title="",
+                                datetime=date,
                             )
                         )
                         start += 1
