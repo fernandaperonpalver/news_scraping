@@ -5,48 +5,76 @@ import json
 from dataclasses import dataclass
 
 import aiohttp
+import pandas as pd
 from lxml import html
 
+from date_strategy import data_format
 from extractors.article import Article, GloboArticle, R7Article, UOLArticle
 from scraping_scripts import get_urls
 
 
-async def extract_elements(article_info):
-    portal_info = []
-
+async def extract_elements_from_html(articles):
+    updated_articles = []
+    start = 0
     async with aiohttp.ClientSession() as session:
-        for url in article_info:  ##iterar sobre url e xpath_description do article_info
+        for article in articles:
+            start += 1
+            print(start)
             try:
-                async with session.get(url) as response:
+                async with session.get(article.url) as response:
                     html_content = await response.text()
-                    tree = html.fromstring(
-                        html_content
-                    )  # nao usar html como nome de variável senão dá confusão
-                    ##
-                    description = tree.xpath(xpath_description)
+                    tree = html.fromstring(html_content)
 
-                    article = Article(
-                        url=url,
-                        description=description[0] if description else None,
+                    title_matches = (
+                        tree.xpath(article.xpath_title) if article.xpath_title else []
+                    )
+                    description_matches = (
+                        tree.xpath(article.xpath_description)
+                        if article.xpath_description
+                        else []
                     )
 
-                    portal_info.append(article)
-                    print(portal_info)
+                    updated_article = Article(
+                        portal=article.portal,
+                        url=article.url,
+                        title=title_matches[0] if title_matches else article.title,
+                        description=description_matches[0]
+                        if description_matches
+                        else article.description,
+                        datetime=article.datetime,
+                        xpath_title=article.xpath_title,
+                        xpath_date=article.xpath_date,
+                        xpath_description=article.xpath_description,
+                    )
+
+                    updated_articles.append(updated_article)
 
             except Exception as e:
-                print(f"Erro ao processar URL {url}: {e}")
-    return portal_info
+                print(f"Erro ao processar URL {article.url}: {e}")
+                # Mantém o artigo sem alterações caso haja exceção
+                updated_articles.append(article)
+
+    return updated_articles
 
 
-#  "https://www.r7.com/arc/outboundfeeds/sitemap-news/?outputType=xml",
 async def main(feeds):
     html_urls = await get_urls(feeds)
-    # html_urls = html_urls[:20]
-    # portais = await extract_elements(html_urls)
-    print(html_urls)
-
-
-##usar ld-json para pegar o que puder da maneira mais generalizável possível
+    portais = await extract_elements_from_html(html_urls)
+    df = pd.DataFrame(
+        [
+            {
+                "portal": artigo.portal,
+                "title": artigo.title,
+                "description": artigo.description,
+                "url": artigo.url,
+                "datetime": artigo.datetime,
+            }
+            for artigo in portais  # Itera sobre cada objeto em 'portais'
+        ]
+    )
+    df["datetime"] = df["datetime"].apply(data_format)
+    df.to_csv("article_data.csv", index=False)
+    return None
 
 
 if __name__ == "__main__":

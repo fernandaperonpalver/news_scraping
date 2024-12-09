@@ -38,6 +38,9 @@ async def get_news_sitemap(articles_feeds):
                                 url=link,
                                 title="",
                                 datetime=date,
+                                xpath_title=article_feed.xpath_title,
+                                xpath_date=article_feed.xpath_date,
+                                xpath_description=article_feed.xpath_description,
                             )
                         )
                         start += 1
@@ -75,6 +78,9 @@ async def get_news_rss(articles_feeds):
                                 url=link,
                                 title=title,
                                 datetime=pub_date,
+                                xpath_title=article.xpath_title,
+                                xpath_date=article.xpath_date,
+                                xpath_description=article.xpath_description,
                             )
                         )
 

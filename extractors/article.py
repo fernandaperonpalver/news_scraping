@@ -30,7 +30,7 @@ class UOLArticle(Article):
     xpath_title: str = '//meta[@property="og:title"]/@content'
     xpath_url: str = "loc"
     xpath_date: str = "lastmod"
-    xpath_description: str = '//meta[@name="description"]/@content'
+    xpath_description: str = '//meta[@property="og:description"]/@content'
 
 
 @dataclass
@@ -40,4 +40,4 @@ class R7Article(Article):
     xpath_title: str = '//meta[@property="og:title"]/@content'
     xpath_url: str = "loc"
     xpath_date: str = "lastmod"
-    xpath_description: str = '//meta[@name="description"]/@content'
+    xpath_description: str = '//meta[@property="og:description"]/@content'

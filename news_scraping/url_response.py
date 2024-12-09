@@ -2,6 +2,8 @@ import pandas as pd
 import requests
 
 
+##teste git
+
 
 def check_link_status(url):
     try:
@@ -9,16 +11,11 @@ def check_link_status(url):
         return response.status_code, None
     except requests.RequestException as e:
         return 'error', str(e)
-
-# Exemplo de DataFrame
-# Substitua pelos seus dados reais
-df = pd.read_csv('remaining_com_url.csv')
-
-# Inicializar novas colunas para as respostas e erros
+ 
+df = pd.read_csv('remaining_com_url.csv') 
 df['response'] = None
 df['error'] = None
-
-# Iterar sobre os links e verificar cada um
+ 
 for index, row in df.iterrows():
     status, error = check_link_status(row['url'])
     print(status, error)

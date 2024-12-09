@@ -37,7 +37,5 @@ def data_format(data: str):
         try:
             return parser(data)
         except ValueError as e:
-            # Debug detalhado para entender erros
-            print(f"Erro ao tentar {parser.__name__} com data: {data}")
             continue
     return "erro"
