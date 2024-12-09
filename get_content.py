@@ -78,5 +78,5 @@ async def main(feeds):
 
 
 if __name__ == "__main__":
-    feeds = [UOLArticle(), R7Article(), GloboArticle()]
+    feeds = [GloboArticle(), UOLArticle(), R7Article()]
     asyncio.run(main(feeds))

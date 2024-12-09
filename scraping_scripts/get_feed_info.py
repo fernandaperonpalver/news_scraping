@@ -50,6 +50,8 @@ async def get_news_sitemap(articles_feeds):
 
 async def get_news_rss(articles_feeds):
     rss_articles = []
+    seen_urls = set()  # Conjunto para rastrear URLs já vistas
+
     async with aiohttp.ClientSession() as session:
         for article in articles_feeds:
             if "rss" in article.feed:
@@ -59,30 +61,48 @@ async def get_news_rss(articles_feeds):
                     parser = etree.XMLParser(recover=True)
                     root = etree.fromstring(text.encode("utf-8"), parser=parser)
 
-                    # Seleciona todos os <item>
                     items = root.xpath("//item")
 
                     for item_node in items:
-                        # Usa os XPaths definidos no artigo
-                        title_list = item_node.xpath(article.xpath_title)
-                        url_list = item_node.xpath(article.xpath_url)
-                        date_list = item_node.xpath(article.xpath_date)
-
-                        title = title_list[0].strip() if title_list else ""
-                        link = url_list[0].strip() if url_list else ""
-                        pub_date = date_list[0].strip() if date_list else ""
-
-                        rss_articles.append(
-                            Article(
-                                portal=portal,
-                                url=link,
-                                title=title,
-                                datetime=pub_date,
-                                xpath_title=article.xpath_title,
-                                xpath_date=article.xpath_date,
-                                xpath_description=article.xpath_description,
-                            )
+                        title_list = (
+                            item_node.xpath(article.xpath_title)
+                            if not article.xpath_title.startswith(".")
+                            else item_node.xpath(article.xpath_title)
                         )
+                        url_list = (
+                            item_node.xpath(article.xpath_url)
+                            if not article.xpath_url.startswith(".")
+                            else item_node.xpath(article.xpath_url)
+                        )
+                        date_list = (
+                            item_node.xpath(article.xpath_date)
+                            if not article.xpath_date.startswith(".")
+                            else item_node.xpath(article.xpath_date)
+                        )
+
+                        max_len = max(len(title_list), len(url_list), len(date_list))
+
+                        for i in range(max_len):
+                            title = title_list[i].strip() if i < len(title_list) else ""
+                            link = url_list[i].strip() if i < len(url_list) else ""
+                            pub_date = (
+                                date_list[i].strip() if i < len(date_list) else ""
+                            )
+
+                            # Adiciona apenas se a URL não for duplicada
+                            if link and link not in seen_urls:
+                                rss_articles.append(
+                                    Article(
+                                        portal=portal,
+                                        url=link,
+                                        title=title,
+                                        datetime=pub_date,
+                                        xpath_title=article.xpath_title,
+                                        xpath_date=article.xpath_date,
+                                        xpath_description=article.xpath_description,
+                                    )
+                                )
+                                seen_urls.add(link)
 
     return rss_articles
 
